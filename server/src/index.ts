@@ -1,0 +1,127 @@
+import express from "express";
+import cors from "cors";
+import { PORT } from "./config.js";
+import {
+  refresh,
+  getSnapshot,
+  filterSessions,
+  findSession,
+  searchSessions,
+  sourceAvailability,
+  startWatching,
+  Filter,
+} from "./store.js";
+import { summarize, tokenInsights } from "./analytics.js";
+import { optimizationReport, suggestionsForSession } from "./optimize.js";
+import { getResources } from "./resources.js";
+import { Source } from "./types.js";
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+function parseFilter(q: express.Request["query"]): Filter {
+  const source = (q.source as string) || "all";
+  return {
+    from: (q.from as string) || undefined,
+    to: (q.to as string) || undefined,
+    source: (["cli", "vscode"].includes(source) ? source : "all") as Source | "all",
+  };
+}
+
+app.get("/api/health", (_req, res) => {
+  const snap = getSnapshot();
+  res.json({
+    ok: true,
+    scannedAt: snap.scannedAt,
+    sources: sourceAvailability(),
+    errors: snap.errors,
+  });
+});
+
+app.post("/api/refresh", (_req, res) => {
+  const snap = refresh();
+  res.json({ ok: true, scannedAt: snap.scannedAt, count: snap.sessions.length });
+});
+
+app.get("/api/summary", (req, res) => {
+  const sessions = filterSessions(parseFilter(req.query));
+  res.json(summarize(sessions));
+});
+
+app.get("/api/sessions", (req, res) => {
+  const includeEmpty = req.query.includeEmpty === "true";
+  let sessions = filterSessions(parseFilter(req.query));
+  if (!includeEmpty) sessions = sessions.filter((s) => s.usage.total > 0);
+  res.json(
+    sessions
+      .map((s) => ({
+        id: s.id,
+        source: s.source,
+        slug: s.slug,
+        model: s.model,
+        repository: s.repository,
+        startedAt: s.startedAt,
+        updatedAt: s.updatedAt,
+        turnCount: s.turns.length,
+        usage: s.usage,
+      }))
+      .sort((a, b) => b.usage.total - a.usage.total)
+  );
+});
+
+app.get("/api/sessions/:source/:id", (req, res) => {
+  const session = findSession(req.params.source, req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "session not found" });
+    return;
+  }
+  res.json(session);
+});
+
+app.get("/api/tokens", (req, res) => {
+  const sessions = filterSessions(parseFilter(req.query));
+  res.json(tokenInsights(sessions));
+});
+
+app.get("/api/search", (req, res) => {
+  const q = (req.query.q as string) || "";
+  res.json(searchSessions(parseFilter(req.query), q));
+});
+
+app.get("/api/optimize", (req, res) => {
+  const sessions = filterSessions(parseFilter(req.query));
+  res.json(optimizationReport(sessions));
+});
+
+app.get("/api/optimize/:source/:id", (req, res) => {
+  const session = findSession(req.params.source, req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "session not found" });
+    return;
+  }
+  res.json(suggestionsForSession(session));
+});
+
+app.get("/api/resources", async (req, res) => {
+  const topic = (req.query.topic as string) || "";
+  if (!topic.trim()) {
+    res.status(400).json({ error: "topic required" });
+    return;
+  }
+  try {
+    res.json(await getResources(topic));
+  } catch {
+    res.json({ topic, video: null, doc: null, fetchedAt: new Date().toISOString() });
+  }
+});
+
+app.listen(PORT, () => {
+  const snap = refresh();
+  startWatching();
+  console.log(`[tokenwise] server on http://localhost:${PORT}`);
+  console.log(
+    `[tokenwise] loaded ${snap.sessions.length} sessions (cli+vscode)` +
+      (snap.errors.length ? ` with errors: ${snap.errors.join("; ")}` : "")
+  );
+});
