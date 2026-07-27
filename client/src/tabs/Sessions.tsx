@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, Range } from "../lib/api";
-import { SearchHit, SessionListItem, Suggestion, UnifiedSession } from "../lib/types";
+import {
+  PromptAnalysisReport,
+  SearchHit,
+  SessionListItem,
+  Suggestion,
+  UnifiedSession,
+} from "../lib/types";
 import { Card, Spinner, SourceChip, EmptyState } from "../components/ui";
 import { SuggestionCard } from "../components/SuggestionCard";
+import { PromptOptimizer } from "../components/PromptOptimizer";
 import {
   formatTokens,
   formatNumber,
@@ -172,13 +179,18 @@ export function Sessions({ range }: { range: Range }) {
 function SessionDrawer({ source, id, onClose }: { source: string; id: string; onClose: () => void }) {
   const [session, setSession] = useState<UnifiedSession | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [promptReport, setPromptReport] = useState<PromptAnalysisReport | null>(null);
+  const [showOptimizer, setShowOptimizer] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setSession(null);
     setSuggestions([]);
+    setPromptReport(null);
+    setShowOptimizer(false);
     api.session(source, id).then((s) => alive && setSession(s));
     api.sessionSuggestions(source, id).then((s) => alive && setSuggestions(s)).catch(() => {});
+    api.promptAnalysis(source, id).then((r) => alive && setPromptReport(r)).catch(() => {});
     return () => {
       alive = false;
     };
@@ -225,6 +237,23 @@ function SessionDrawer({ source, id, onClose }: { source: string; id: string; on
                 {u!.reasoning > 0 && <MiniStat k="Reasoning" v={formatTokens(u!.reasoning)} />}
                 {u!.aiu > 0 && <MiniStat k="Est. cost" v={`${formatAiu(u!.aiu)} AIU`} />}
               </div>
+
+              {promptReport && promptReport.optimizableCount > 0 && (
+                <button className="prompt-notice" onClick={() => setShowOptimizer(true)}>
+                  <span className="prompt-notice-icon">✨</span>
+                  <span className="prompt-notice-body">
+                    <span className="prompt-notice-title">
+                      {promptReport.optimizableCount} input prompt
+                      {promptReport.optimizableCount > 1 ? "s" : ""} can be optimized
+                    </span>
+                    <span className="prompt-notice-sub">
+                      Save ~{formatNumber(promptReport.totalEstSavingsTokens)} tokens by trimming
+                      filler and redundant context. Tap to review.
+                    </span>
+                  </span>
+                  <span className="prompt-notice-cta">Optimize →</span>
+                </button>
+              )}
 
               {suggestions.length > 0 && (
                 <>
@@ -275,6 +304,15 @@ function SessionDrawer({ source, id, onClose }: { source: string; id: string; on
           )}
         </div>
       </div>
+
+      {showOptimizer && session && (
+        <PromptOptimizer
+          source={source}
+          id={id}
+          slug={session.slug}
+          onClose={() => setShowOptimizer(false)}
+        />
+      )}
     </>
   );
 }

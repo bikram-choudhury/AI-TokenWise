@@ -37,7 +37,18 @@ export function modelLabel(model: string): string {
 }
 
 export function sourceLabel(source: string): string {
-  return source === "cli" ? "copilot-cli" : "VSCode Copilot";
+  switch (source) {
+    case "cli":
+      return "copilot-cli";
+    case "vscode":
+      return "VSCode Copilot";
+    case "claude":
+      return "Claude Code";
+    case "openai":
+      return "OpenAI (Codex)";
+    default:
+      return source;
+  }
 }
 
 export function isoDaysAgo(days: number): string {

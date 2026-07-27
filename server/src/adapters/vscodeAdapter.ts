@@ -194,8 +194,9 @@ function buildSession(file: string): UnifiedSession | null {
   };
 }
 
-export function loadVscodeSessions(): UnifiedSession[] {
-  const roots = [vscodeWorkspaceStorageDir(), vscodeGlobalStorageDir()];
+export function loadVscodeSessions(
+  roots: string[] = [vscodeWorkspaceStorageDir(), vscodeGlobalStorageDir()]
+): UnifiedSession[] {
   const files: string[] = [];
 
   for (const root of roots) {

@@ -46,6 +46,7 @@ export function Overview({ range }: { range: Range }) {
 
   const pref = data.preferredInterface;
   const prefLabel = pref.source ? sourceLabel(pref.source) : "—";
+  const prefCount = pref.source ? pref.counts[pref.source] : 0;
 
   const comp = data.usage;
   const compParts = [
@@ -66,14 +67,14 @@ export function Overview({ range }: { range: Range }) {
           icon="💬"
           foot={
             <>
-              <span className="chip cli">
-                <span className="dot" />
-                {data.sessionsBySource.cli} CLI
-              </span>
-              <span className="chip vscode">
-                <span className="dot" />
-                {data.sessionsBySource.vscode} VSCode
-              </span>
+              {(Object.keys(data.sessionsBySource) as (keyof typeof data.sessionsBySource)[])
+                .filter((src) => data.sessionsBySource[src] > 0)
+                .map((src) => (
+                  <span key={src} className={`chip ${src}`}>
+                    <span className="dot" />
+                    {data.sessionsBySource[src]} {sourceLabel(src)}
+                  </span>
+                ))}
             </>
           }
         />
@@ -105,7 +106,7 @@ export function Overview({ range }: { range: Range }) {
           label="Preferred Interface"
           value={prefLabel}
           icon="⚡"
-          foot={<span>by session count · {pref.cli} vs {pref.vscode}</span>}
+          foot={<span>by session count · {prefCount} sessions</span>}
         />
       </div>
 

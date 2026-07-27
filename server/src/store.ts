@@ -2,12 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadCliSessions } from "./adapters/cliAdapter.js";
 import { loadVscodeSessions } from "./adapters/vscodeAdapter.js";
-import {
-  CLI_DB_PATH,
-  vscodeWorkspaceStorageDir,
-  vscodeGlobalStorageDir,
-} from "./config.js";
-import { Source, UnifiedSession } from "./types.js";
+import { loadClaudeSessions } from "./adapters/claudeCodeAdapter.js";
+import { loadOpenaiSessions } from "./adapters/openaiAdapter.js";
+import { enabledSources, SourceConfig } from "./settings.js";
+import { Source, UnifiedSession, emptySourceCounts } from "./types.js";
 
 interface Snapshot {
   sessions: UnifiedSession[];
@@ -17,23 +15,40 @@ interface Snapshot {
 
 let snapshot: Snapshot | null = null;
 
+function loadForSource(cfg: SourceConfig): UnifiedSession[] {
+  switch (cfg.provider) {
+    case "cli":
+      return loadCliSessions(cfg.path);
+    case "vscode":
+      return loadVscodeSessions([cfg.path]);
+    case "claude":
+      return loadClaudeSessions(cfg.path);
+    case "openai":
+      return loadOpenaiSessions(cfg.path);
+    default:
+      return [];
+  }
+}
+
 export function refresh(): Snapshot {
   const errors: string[] = [];
-  let cli: UnifiedSession[] = [];
-  let vscode: UnifiedSession[] = [];
-  try {
-    cli = loadCliSessions();
-  } catch (err) {
-    errors.push(`cli: ${(err as Error).message}`);
+  const all: UnifiedSession[] = [];
+  const seen = new Set<string>();
+
+  for (const cfg of enabledSources()) {
+    try {
+      for (const s of loadForSource(cfg)) {
+        const key = `${s.source}:${s.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        all.push(s);
+      }
+    } catch (err) {
+      errors.push(`${cfg.provider} (${cfg.label}): ${(err as Error).message}`);
+    }
   }
-  try {
-    vscode = loadVscodeSessions();
-  } catch (err) {
-    errors.push(`vscode: ${(err as Error).message}`);
-  }
-  const sessions = [...cli, ...vscode].sort((a, b) =>
-    b.startedAt.localeCompare(a.startedAt)
-  );
+
+  const sessions = all.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   snapshot = { sessions, scannedAt: new Date().toISOString(), errors };
   return snapshot;
 }
@@ -126,10 +141,9 @@ export function searchSessions(filter: Filter, query: string): SearchHit[] {
 
 export function sourceAvailability(): Record<Source, number> {
   const snap = getSnapshot();
-  return {
-    cli: snap.sessions.filter((s) => s.source === "cli").length,
-    vscode: snap.sessions.filter((s) => s.source === "vscode").length,
-  };
+  const counts = emptySourceCounts();
+  for (const s of snap.sessions) counts[s.source] += 1;
+  return counts;
 }
 
 let watchTimer: NodeJS.Timeout | null = null;
@@ -154,11 +168,18 @@ export function startWatching(): void {
     }, 1500);
   };
 
-  const dirs = [
-    path.dirname(CLI_DB_PATH),
-    vscodeWorkspaceStorageDir(),
-    vscodeGlobalStorageDir(),
-  ];
+  const dirs = new Set<string>();
+  for (const cfg of enabledSources()) {
+    const p = cfg.path;
+    if (!p) continue;
+    try {
+      // Watch directories directly; for a file (e.g. the CLI db) watch its parent.
+      const dir = fs.existsSync(p) && fs.statSync(p).isDirectory() ? p : path.dirname(p);
+      dirs.add(dir);
+    } catch {
+      dirs.add(path.dirname(p));
+    }
+  }
 
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) continue;
@@ -175,5 +196,18 @@ export function startWatching(): void {
       }
     }
   }
+}
+
+/** Tear down and re-establish watchers (e.g. after settings change). */
+export function restartWatching(): void {
+  for (const w of watchers) {
+    try {
+      w.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  watchers.length = 0;
+  startWatching();
 }
 

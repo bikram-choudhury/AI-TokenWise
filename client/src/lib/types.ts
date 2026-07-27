@@ -1,4 +1,6 @@
-export type Source = "cli" | "vscode";
+export type Source = "cli" | "vscode" | "claude" | "openai";
+
+export const SOURCES: Source[] = ["cli", "vscode", "claude", "openai"];
 
 export interface TokenUsage {
   input: number;
@@ -51,13 +53,13 @@ export interface Summary {
   cacheHitRate: number;
   usage: TokenUsage;
   topModel: { model: string; count: number } | null;
-  preferredInterface: { source: Source | null; cli: number; vscode: number };
+  preferredInterface: { source: Source | null; counts: Record<Source, number> };
   tokensPerDay: { date: string; total: number }[];
   activeDays: number;
 }
 
 export interface TokenInsights {
-  overTime: { date: string; cli: number; vscode: number; total: number }[];
+  overTime: { date: string; cli: number; vscode: number; claude: number; openai: number; total: number }[];
   byModel: { model: string; total: number; input: number; output: number; aiu: number }[];
   byRepo: { repository: string; total: number; sessions: number; aiu: number }[];
   composition: {
@@ -131,11 +133,70 @@ export interface ResourceLink {
   source: string;
 }
 
+export interface PromptIssue {
+  label: string;
+  detail: string;
+  savedChars: number;
+}
+
+export interface PromptAnalysis {
+  turnIndex: number;
+  original: string;
+  optimized: string;
+  originalChars: number;
+  optimizedChars: number;
+  originalTokensEst: number;
+  optimizedTokensEst: number;
+  estSavingsTokens: number;
+  estSavingsPct: number;
+  issues: PromptIssue[];
+}
+
+export interface PromptAnalysisReport {
+  sessionId: string;
+  source: Source;
+  slug: string;
+  model: string;
+  promptCount: number;
+  optimizableCount: number;
+  totalOriginalTokensEst: number;
+  totalEstSavingsTokens: number;
+  analyses: PromptAnalysis[];
+}
+
 export interface LearningResources {
   topic: string;
   video: ResourceLink | null;
   doc: ResourceLink | null;
   fetchedAt: string;
+}
+
+export interface SourceConfig {
+  id: string;
+  provider: Source;
+  label: string;
+  path: string;
+  enabled: boolean;
+}
+
+export interface Settings {
+  sources: SourceConfig[];
+}
+
+export interface ProviderInfo {
+  id: Source;
+  label: string;
+}
+
+export interface SettingsResponse {
+  settings: Settings;
+  providers: ProviderInfo[];
+}
+
+export interface PathValidation {
+  path: string;
+  exists: boolean;
+  kind: "file" | "directory" | "missing";
 }
 
 

@@ -46,15 +46,15 @@ interface TurnRow {
  * actively written, we fall back to copying the db + sidecar files to a temp
  * location if a direct read-only open fails.
  */
-function openDb(): DatabaseSync | null {
-  if (!fs.existsSync(CLI_DB_PATH)) return null;
+function openDb(dbPath: string): DatabaseSync | null {
+  if (!fs.existsSync(dbPath)) return null;
   try {
-    return new DatabaseSync(CLI_DB_PATH, { readOnly: true });
+    return new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     try {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tokenwise-cli-"));
       for (const suffix of ["", "-wal", "-shm"]) {
-        const src = CLI_DB_PATH + suffix;
+        const src = dbPath + suffix;
         if (fs.existsSync(src)) fs.copyFileSync(src, path.join(tmpDir, "db" + suffix));
       }
       return new DatabaseSync(path.join(tmpDir, "db"), { readOnly: true });
@@ -94,8 +94,8 @@ function accumulate(target: TokenUsage, add: TokenUsage): void {
   target.aiu += add.aiu;
 }
 
-export function loadCliSessions(): UnifiedSession[] {
-  const db = openDb();
+export function loadCliSessions(dbPath: string = CLI_DB_PATH): UnifiedSession[] {
+  const db = openDb(dbPath);
   if (!db) return [];
   try {
     const sessions = db

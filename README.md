@@ -46,6 +46,14 @@ npm run dev:server       # http://localhost:4000
 npm run dev:client       # http://localhost:5173
 ```
 
+### Stop the server
+
+```powershell
+Get-NetTCPConnection -LocalPort 4000 | Select-Object LocalAddress, LocalPort, State, OwningProcess
+Get-Process -Id 30688
+Stop-Process -Id 30688 -Force
+```
+
 ## API
 
 | Method | Route | Purpose |

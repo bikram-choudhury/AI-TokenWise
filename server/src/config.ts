@@ -15,4 +15,21 @@ export function vscodeGlobalStorageDir(): string {
   return path.join(appData, "Code", "User", "globalStorage");
 }
 
+/** Claude Code stores per-project session transcripts as JSONL. */
+export function claudeProjectsDir(): string {
+  return path.join(home, ".claude", "projects");
+}
+
+/** OpenAI Codex CLI stores rollout session logs as JSONL. */
+export function codexSessionsDir(): string {
+  return path.join(home, ".codex", "sessions");
+}
+
+/** Directory where TokenWise persists its own settings. */
+export function tokenwiseDir(): string {
+  return path.join(home, ".tokenwise");
+}
+
+export const SETTINGS_PATH = path.join(home, ".tokenwise", "settings.json");
+
 export const PORT = Number(process.env.PORT) || 4000;

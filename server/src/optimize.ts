@@ -2,6 +2,11 @@ import { Source, UnifiedSession } from "./types.js";
 
 export type Severity = "low" | "medium" | "high";
 
+/** Rough token estimate: ~4 characters per token. */
+function estTokens(chars: number): number {
+  return Math.ceil(chars / 4);
+}
+
 export interface Suggestion {
   heuristic: string;
   sessionId: string;
@@ -273,5 +278,177 @@ export function optimizationReport(sessions: UnifiedSession[]): OptimizationRepo
       }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     regressions: detectRegressions(sessions),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Per-prompt optimization: analyze individual user input prompts and
+ * produce a leaner rewrite plus the token savings that rewrite yields.
+ * ------------------------------------------------------------------ */
+
+export interface PromptIssue {
+  label: string;
+  detail: string;
+  /** Characters removed by addressing this issue (0 = advisory only). */
+  savedChars: number;
+}
+
+export interface PromptAnalysis {
+  turnIndex: number;
+  original: string;
+  optimized: string;
+  originalChars: number;
+  optimizedChars: number;
+  originalTokensEst: number;
+  optimizedTokensEst: number;
+  estSavingsTokens: number;
+  estSavingsPct: number;
+  issues: PromptIssue[];
+}
+
+export interface PromptAnalysisReport {
+  sessionId: string;
+  source: Source;
+  slug: string;
+  model: string;
+  promptCount: number;
+  optimizableCount: number;
+  totalOriginalTokensEst: number;
+  totalEstSavingsTokens: number;
+  analyses: PromptAnalysis[];
+}
+
+/** Rewrite a single user prompt into a leaner form and report what changed. */
+function optimizePromptText(text: string): { optimized: string; issues: PromptIssue[] } {
+  const issues: PromptIssue[] = [];
+  let optimized = text;
+
+  const record = (label: string, detail: string, before: string, after: string) => {
+    const saved = before.length - after.length;
+    if (saved > 0) issues.push({ label, detail, savedChars: saved });
+  };
+
+  // 1. Politeness / courtesy phrases the model doesn't act on.
+  let before = optimized;
+  optimized = optimized
+    .replace(/\b(?:can|could|would|will)\s+you\s+please\b/gi, "")
+    .replace(/\bplease\b/gi, "")
+    .replace(/\bkindly\b/gi, "")
+    .replace(/\b(?:thanks?|thank you)(?:\s+(?:so much|a lot|very much|in advance))?\b[.,!]*/gi, "")
+    .replace(/\bif\s+(?:you\s+)?(?:don'?t\s+mind|possible)\b[,.]?/gi, "");
+  record(
+    "Politeness & filler",
+    "Removed courtesy phrases the model doesn't need to act on (please, thanks, kindly).",
+    before,
+    optimized
+  );
+
+  // 2. Wordy openers and hedging qualifiers.
+  before = optimized;
+  optimized = optimized
+    .replace(/\bI\s+(?:was\s+)?(?:just\s+)?wondering\s+(?:if\s+)?(?:you\s+could\s+)?/gi, "")
+    .replace(/\bI\s+would\s+like\s+(?:you\s+)?to\b/gi, "")
+    .replace(/\bI\s+(?:want|need)\s+you\s+to\b/gi, "")
+    .replace(/\b(?:basically|actually|literally|really|very|just|simply|essentially)\b/gi, "")
+    .replace(/\b(?:kind of|sort of|a bit|somewhat)\b/gi, "");
+  record(
+    "Hedging & qualifiers",
+    "Trimmed low-value qualifiers and openers (just, basically, I would like you to).",
+    before,
+    optimized
+  );
+
+  // 3. Redundant references to earlier context.
+  before = optimized;
+  optimized = optimized
+    .replace(/\b(?:as|like)\s+I\s+(?:mentioned|said|noted|told you)(?:\s+(?:before|earlier|previously|above))?\b[,.]?/gi, "")
+    .replace(/\bas\s+you\s+(?:can\s+see|know|are\s+aware)\b[,.]?/gi, "");
+  record(
+    "Redundant back-references",
+    "Dropped phrases that restate context the model already has (as I mentioned before).",
+    before,
+    optimized
+  );
+
+  // 4. Whitespace / blank-line normalization.
+  before = optimized;
+  optimized = optimized
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+$/gm, "");
+  record("Whitespace cleanup", "Collapsed repeated spaces and blank lines.", before, optimized);
+
+  // Tidy up spacing/punctuation left behind by the removals.
+  optimized = optimized
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([.,!?;:])/g, "$1")
+    .replace(/^[\s,.;:!-]+/, "")
+    .trim();
+  if (optimized) optimized = optimized[0].toUpperCase() + optimized.slice(1);
+
+  // 5. Advisory: large pasted code/context blocks (not auto-removed).
+  const codeBlocks = text.match(/```[\s\S]*?```/g) || [];
+  const codeChars = codeBlocks.reduce((a, b) => a + b.length, 0);
+  if (codeChars > 1200) {
+    issues.push({
+      label: "Large pasted code/context",
+      detail: `~${estTokens(codeChars).toLocaleString()} tokens of pasted code. Reference the file path instead of pasting full contents when the assistant can read files.`,
+      savedChars: 0,
+    });
+  }
+
+  return { optimized, issues };
+}
+
+/** Analyze every user prompt in a session and estimate token savings. */
+export function analyzePromptsForSession(s: UnifiedSession): PromptAnalysisReport {
+  const analyses: PromptAnalysis[] = [];
+  let promptCount = 0;
+
+  for (const t of s.turns) {
+    if (t.role !== "user") continue;
+    const text = (t.text || "").trim();
+    if (!text) continue;
+    promptCount++;
+
+    const { optimized, issues } = optimizePromptText(text);
+    if (issues.length === 0) continue;
+
+    const originalChars = text.length;
+    const optimizedChars = optimized.length;
+    const originalTokensEst = estTokens(originalChars);
+    const optimizedTokensEst = estTokens(optimizedChars);
+    const estSavingsTokens = Math.max(0, originalTokensEst - optimizedTokensEst);
+
+    // Skip purely cosmetic rewrites (e.g. whitespace-only) that save no tokens,
+    // unless there's an advisory issue worth surfacing (e.g. large pasted code).
+    const hasAdvisory = issues.some((i) => i.savedChars === 0);
+    if (estSavingsTokens <= 0 && !hasAdvisory) continue;
+
+    analyses.push({
+      turnIndex: t.index,
+      original: text,
+      optimized: optimized || text,
+      originalChars,
+      optimizedChars,
+      originalTokensEst,
+      optimizedTokensEst,
+      estSavingsTokens,
+      estSavingsPct: originalTokensEst > 0 ? Math.round((estSavingsTokens / originalTokensEst) * 100) : 0,
+      issues,
+    });
+  }
+
+  return {
+    sessionId: s.id,
+    source: s.source,
+    slug: s.slug,
+    model: s.model,
+    promptCount,
+    optimizableCount: analyses.length,
+    totalOriginalTokensEst: analyses.reduce((a, x) => a + x.originalTokensEst, 0),
+    totalEstSavingsTokens: analyses.reduce((a, x) => a + x.estSavingsTokens, 0),
+    analyses,
   };
 }

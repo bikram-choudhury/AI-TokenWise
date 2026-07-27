@@ -2,8 +2,12 @@ import {
   Health,
   LearningResources,
   OptimizationReport,
+  PathValidation,
+  PromptAnalysisReport,
   SearchHit,
   SessionListItem,
+  Settings,
+  SettingsResponse,
   Suggestion,
   Summary,
   TokenInsights,
@@ -13,7 +17,7 @@ import {
 export interface Range {
   from?: string;
   to?: string;
-  source: "all" | "cli" | "vscode";
+  source: "all" | "cli" | "vscode" | "claude" | "openai";
 }
 
 function qs(range: Range, extra: Record<string, string> = {}): string {
@@ -49,6 +53,26 @@ export const api = {
   optimize: (range: Range) => get<OptimizationReport>(`/api/optimize${qs(range)}`),
   sessionSuggestions: (source: string, id: string) =>
     get<Suggestion[]>(`/api/optimize/${source}/${encodeURIComponent(id)}`),
+  promptAnalysis: (source: string, id: string) =>
+    get<PromptAnalysisReport>(
+      `/api/optimize/prompts/${source}/${encodeURIComponent(id)}`
+    ),
   resources: (topic: string) =>
     get<LearningResources>(`/api/resources?topic=${encodeURIComponent(topic)}`),
+  getSettings: () => get<SettingsResponse>("/api/settings"),
+  saveSettings: (settings: Settings) =>
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json() as Promise<{ settings: Settings; count: number }>;
+    }),
+  validatePath: (path: string) =>
+    fetch("/api/settings/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    }).then((r) => r.json() as Promise<PathValidation>),
 };

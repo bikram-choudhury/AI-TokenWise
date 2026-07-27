@@ -58,7 +58,7 @@ export function Tokens({ range }: { range: Range }) {
   return (
     <div className="chart-grid">
       <Card className="card-pad chart-card" style={{ gridColumn: "1 / -1" } as React.CSSProperties}>
-        <div className="section-title">Tokens over time · CLI vs VSCode</div>
+        <div className="section-title">Tokens over time · by source</div>
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={data.overTime} margin={{ left: -10, right: 8, top: 8 }}>
             <defs>
@@ -70,6 +70,14 @@ export function Tokens({ range }: { range: Range }) {
                 <stop offset="0%" stopColor="var(--vscode)" stopOpacity={0.5} />
                 <stop offset="100%" stopColor="var(--vscode)" stopOpacity={0} />
               </linearGradient>
+              <linearGradient id="gClaude" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--accent-2)" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="var(--accent-2)" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gOpenai" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--success)" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="var(--success)" stopOpacity={0} />
+              </linearGradient>
             </defs>
             <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
             <XAxis dataKey="date" tickFormatter={formatDay} tick={{ fontSize: 11, fill: "var(--text-faint)" }} stroke="var(--border)" minTickGap={24} />
@@ -77,6 +85,8 @@ export function Tokens({ range }: { range: Range }) {
             <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [formatNumber(v as number), sourceLabel(n as string)]} />
             <Area type="monotone" dataKey="cli" stackId="1" stroke="var(--cli)" strokeWidth={2} fill="url(#gCli)" />
             <Area type="monotone" dataKey="vscode" stackId="1" stroke="var(--vscode)" strokeWidth={2} fill="url(#gVsc)" />
+            <Area type="monotone" dataKey="claude" stackId="1" stroke="var(--accent-2)" strokeWidth={2} fill="url(#gClaude)" />
+            <Area type="monotone" dataKey="openai" stackId="1" stroke="var(--success)" strokeWidth={2} fill="url(#gOpenai)" />
           </AreaChart>
         </ResponsiveContainer>
       </Card>

@@ -1,5 +1,6 @@
 import { Range } from "../lib/api";
 import { isoDaysAgo, today } from "../lib/format";
+import { SOURCES } from "../lib/types";
 
 interface Props {
   range: Range;
@@ -67,13 +68,21 @@ export function Toolbar({ range, onChange, onRefresh, refreshing, auto, onToggle
       </div>
 
       <div className="segmented">
-        {(["all", "cli", "vscode"] as const).map((s) => (
+        {(["all", ...SOURCES] as const).map((s) => (
           <button
             key={s}
             className={range.source === s ? "active" : ""}
             onClick={() => onChange({ ...range, source: s })}
           >
-            {s === "all" ? "All" : s === "cli" ? "CLI" : "VSCode"}
+            {s === "all"
+              ? "All"
+              : s === "cli"
+              ? "CLI"
+              : s === "vscode"
+              ? "VSCode"
+              : s === "claude"
+              ? "Claude"
+              : "OpenAI"}
           </button>
         ))}
       </div>

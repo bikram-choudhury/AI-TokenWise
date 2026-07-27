@@ -7,17 +7,19 @@ import { Overview } from "./tabs/Overview";
 import { Sessions } from "./tabs/Sessions";
 import { Tokens } from "./tabs/Tokens";
 import { Optimization } from "./tabs/Optimization";
+import { Settings } from "./tabs/Settings";
 import { api, Range } from "./lib/api";
 import { Health } from "./lib/types";
 import { isoDaysAgo, today } from "./lib/format";
 
-type Tab = "overview" | "sessions" | "tokens" | "optimization";
+type Tab = "overview" | "sessions" | "tokens" | "optimization" | "settings";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "Overview", icon: "▨" },
   { id: "sessions", label: "Session Insights", icon: "☰" },
   { id: "tokens", label: "Token Insights", icon: "◔" },
   { id: "optimization", label: "Optimization", icon: "✦" },
+  { id: "settings", label: "Settings", icon: "⚙" },
 ];
 
 function AppInner() {
@@ -106,7 +108,7 @@ function AppInner() {
           right={
             health && (
               <span className="muted" style={{ marginLeft: "auto" }}>
-                {health.sources.cli + health.sources.vscode} sessions indexed
+                {Object.values(health.sources).reduce((a, b) => a + b, 0)} sessions indexed
               </span>
             )
           }
@@ -116,6 +118,14 @@ function AppInner() {
         {tab === "sessions" && <Sessions key={rangeKey} range={range} />}
         {tab === "tokens" && <Tokens key={rangeKey} range={range} />}
         {tab === "optimization" && <Optimization key={rangeKey} range={range} />}
+        {tab === "settings" && (
+          <Settings
+            onSaved={async () => {
+              await loadHealth();
+              setNonce((n) => n + 1);
+            }}
+          />
+        )}
       </main>
     </div>
   );

@@ -1,4 +1,11 @@
-export type Source = "cli" | "vscode";
+export type Source = "cli" | "vscode" | "claude" | "openai";
+
+/** All known providers, in display order. */
+export const SOURCES: Source[] = ["cli", "vscode", "claude", "openai"];
+
+export function emptySourceCounts(): Record<Source, number> {
+  return { cli: 0, vscode: 0, claude: 0, openai: 0 };
+}
 
 export interface TokenUsage {
   input: number;

@@ -1,4 +1,4 @@
-import { Source, UnifiedSession, TokenUsage, emptyUsage } from "./types.js";
+import { Source, SOURCES, UnifiedSession, TokenUsage, emptyUsage, emptySourceCounts } from "./types.js";
 
 export interface Summary {
   totalSessions: number;
@@ -8,7 +8,7 @@ export interface Summary {
   cacheHitRate: number;
   usage: TokenUsage;
   topModel: { model: string; count: number } | null;
-  preferredInterface: { source: Source | null; cli: number; vscode: number };
+  preferredInterface: { source: Source | null; counts: Record<Source, number> };
   tokensPerDay: { date: string; total: number }[];
   activeDays: number;
 }
@@ -27,14 +27,12 @@ export function summarize(sessions: UnifiedSession[]): Summary {
   const usage = emptyUsage();
   const modelCounts = new Map<string, number>();
   const byDay = new Map<string, number>();
-  let cli = 0;
-  let vscode = 0;
+  const bySource = emptySourceCounts();
 
   for (const s of sessions) {
     accumulate(usage, s.usage);
     modelCounts.set(s.model, (modelCounts.get(s.model) ?? 0) + 1);
-    if (s.source === "cli") cli++;
-    else vscode++;
+    bySource[s.source] += 1;
     const day = s.startedAt.slice(0, 10);
     byDay.set(day, (byDay.get(day) ?? 0) + s.usage.total);
   }
@@ -47,7 +45,13 @@ export function summarize(sessions: UnifiedSession[]): Summary {
 
   // Preferred interface measured by session count.
   let preferredSource: Source | null = null;
-  if (cli > 0 || vscode > 0) preferredSource = cli >= vscode ? "cli" : "vscode";
+  let bestN = 0;
+  for (const src of SOURCES) {
+    if (bySource[src] > bestN) {
+      bestN = bySource[src];
+      preferredSource = src;
+    }
+  }
 
   const tokensPerDay = [...byDay.entries()]
     .map(([date, total]) => ({ date, total }))
@@ -60,20 +64,20 @@ export function summarize(sessions: UnifiedSession[]): Summary {
 
   return {
     totalSessions: sessions.length,
-    sessionsBySource: { cli, vscode },
+    sessionsBySource: bySource,
     totalTokens: usage.total,
     totalAiu: usage.aiu,
     cacheHitRate,
     usage,
     topModel,
-    preferredInterface: { source: preferredSource, cli, vscode },
+    preferredInterface: { source: preferredSource, counts: bySource },
     tokensPerDay,
     activeDays: byDay.size,
   };
 }
 
 export interface TokenInsights {
-  overTime: { date: string; cli: number; vscode: number; total: number }[];
+  overTime: { date: string; cli: number; vscode: number; claude: number; openai: number; total: number }[];
   byModel: { model: string; total: number; input: number; output: number; aiu: number }[];
   byRepo: { repository: string; total: number; sessions: number; aiu: number }[];
   composition: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
@@ -83,7 +87,7 @@ export interface TokenInsights {
 }
 
 export function tokenInsights(sessions: UnifiedSession[]): TokenInsights {
-  const overTime = new Map<string, { cli: number; vscode: number }>();
+  const overTime = new Map<string, Record<Source, number>>();
   const byModel = new Map<string, { total: number; input: number; output: number; aiu: number }>();
   const byRepo = new Map<string, { total: number; sessions: number; aiu: number }>();
   const composition = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
@@ -93,7 +97,7 @@ export function tokenInsights(sessions: UnifiedSession[]): TokenInsights {
 
   for (const s of sessions) {
     const day = s.startedAt.slice(0, 10);
-    const ot = overTime.get(day) ?? { cli: 0, vscode: 0 };
+    const ot = overTime.get(day) ?? emptySourceCounts();
     ot[s.source] += s.usage.total;
     overTime.set(day, ot);
 
@@ -137,7 +141,14 @@ export function tokenInsights(sessions: UnifiedSession[]): TokenInsights {
 
   return {
     overTime: [...overTime.entries()]
-      .map(([date, v]) => ({ date, cli: v.cli, vscode: v.vscode, total: v.cli + v.vscode }))
+      .map(([date, v]) => ({
+        date,
+        cli: v.cli,
+        vscode: v.vscode,
+        claude: v.claude,
+        openai: v.openai,
+        total: v.cli + v.vscode + v.claude + v.openai,
+      }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     byModel: [...byModel.entries()]
       .map(([model, v]) => ({ model, ...v }))

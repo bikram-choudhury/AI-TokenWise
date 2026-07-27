@@ -9,12 +9,24 @@ import {
   searchSessions,
   sourceAvailability,
   startWatching,
+  restartWatching,
   Filter,
 } from "./store.js";
 import { summarize, tokenInsights } from "./analytics.js";
-import { optimizationReport, suggestionsForSession } from "./optimize.js";
+import {
+  optimizationReport,
+  suggestionsForSession,
+  analyzePromptsForSession,
+} from "./optimize.js";
 import { getResources } from "./resources.js";
-import { Source } from "./types.js";
+import {
+  loadSettings,
+  saveSettings,
+  validatePath,
+  PROVIDER_LABELS,
+  Settings,
+} from "./settings.js";
+import { Source, SOURCES } from "./types.js";
 
 const app = express();
 app.use(cors());
@@ -25,7 +37,7 @@ function parseFilter(q: express.Request["query"]): Filter {
   return {
     from: (q.from as string) || undefined,
     to: (q.to as string) || undefined,
-    source: (["cli", "vscode"].includes(source) ? source : "all") as Source | "all",
+    source: (SOURCES.includes(source as Source) ? source : "all") as Source | "all",
   };
 }
 
@@ -103,6 +115,15 @@ app.get("/api/optimize/:source/:id", (req, res) => {
   res.json(suggestionsForSession(session));
 });
 
+app.get("/api/optimize/prompts/:source/:id", (req, res) => {
+  const session = findSession(req.params.source, req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "session not found" });
+    return;
+  }
+  res.json(analyzePromptsForSession(session));
+});
+
 app.get("/api/resources", async (req, res) => {
   const topic = (req.query.topic as string) || "";
   if (!topic.trim()) {
@@ -116,12 +137,36 @@ app.get("/api/resources", async (req, res) => {
   }
 });
 
+app.get("/api/settings", (_req, res) => {
+  res.json({
+    settings: loadSettings(),
+    providers: SOURCES.map((id) => ({ id, label: PROVIDER_LABELS[id] })),
+  });
+});
+
+app.put("/api/settings", (req, res) => {
+  const body = req.body as Settings;
+  if (!body || !Array.isArray(body.sources)) {
+    res.status(400).json({ error: "sources array required" });
+    return;
+  }
+  const saved = saveSettings(body);
+  const snap = refresh();
+  restartWatching();
+  res.json({ settings: saved, count: snap.sessions.length, sources: sourceAvailability() });
+});
+
+app.post("/api/settings/validate", (req, res) => {
+  const p = (req.body?.path as string) ?? "";
+  res.json(validatePath(p));
+});
+
 app.listen(PORT, () => {
   const snap = refresh();
   startWatching();
   console.log(`[tokenwise] server on http://localhost:${PORT}`);
   console.log(
-    `[tokenwise] loaded ${snap.sessions.length} sessions (cli+vscode)` +
+    `[tokenwise] loaded ${snap.sessions.length} sessions across ${SOURCES.length} providers` +
       (snap.errors.length ? ` with errors: ${snap.errors.join("; ")}` : "")
   );
 });
