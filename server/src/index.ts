@@ -20,6 +20,7 @@ import {
 } from "./optimize.js";
 import { getResources } from "./resources.js";
 import {
+  detectSource,
   loadSettings,
   saveSettings,
   validatePath,
@@ -159,6 +160,15 @@ app.put("/api/settings", (req, res) => {
 app.post("/api/settings/validate", (req, res) => {
   const p = (req.body?.path as string) ?? "";
   res.json(validatePath(p));
+});
+
+app.get("/api/settings/detect/:provider", (req, res) => {
+  const provider = req.params.provider as Source;
+  if (!SOURCES.includes(provider)) {
+    res.status(400).json({ error: "unknown provider" });
+    return;
+  }
+  res.json(detectSource(provider));
 });
 
 app.listen(PORT, () => {

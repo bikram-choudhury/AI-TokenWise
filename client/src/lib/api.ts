@@ -1,4 +1,5 @@
 import {
+  DetectionCandidate,
   Health,
   LearningResources,
   OptimizationReport,
@@ -75,4 +76,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
     }).then((r) => r.json() as Promise<PathValidation>),
+  detectSource: (provider: string) =>
+    get<{ provider: string; candidates: DetectionCandidate[] }>(
+      `/api/settings/detect/${encodeURIComponent(provider)}`
+    ),
 };

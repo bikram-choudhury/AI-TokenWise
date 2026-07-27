@@ -199,4 +199,21 @@ export interface PathValidation {
   kind: "file" | "directory" | "missing";
 }
 
+export type DetectionConfidence = "high" | "medium" | "low";
+
+export interface DetectionCandidate {
+  provider: Source;
+  path: string;
+  kind: "file" | "directory";
+  confidence: DetectionConfidence;
+  reason: string;
+  matchCount: number;
+  sample: string[];
+}
+
+export interface SourceDetection {
+  provider: Source;
+  candidates: DetectionCandidate[];
+}
+
 

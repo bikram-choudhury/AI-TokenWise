@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { ProviderInfo, Source, SourceConfig } from "../lib/types";
+import { DetectionCandidate, ProviderInfo, Source, SourceConfig } from "../lib/types";
 import { Card, Spinner } from "../components/ui";
 
 function uid(): string {
@@ -11,6 +11,8 @@ function uid(): string {
 
 interface RowState extends SourceConfig {
   status?: "ok" | "missing" | "checking";
+  detecting?: boolean;
+  detected?: DetectionCandidate[];
 }
 
 export function Settings({ onSaved }: { onSaved?: () => void }) {
@@ -32,6 +34,11 @@ export function Settings({ onSaved }: { onSaved?: () => void }) {
   const update = (id: string, patch: Partial<RowState>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
+  const applyDetectedPath = async (id: string, candidate: DetectionCandidate) => {
+    update(id, { path: candidate.path, detected: [candidate] });
+    await checkPath(id, candidate.path);
+  };
+
   const checkPath = async (id: string, path: string) => {
     if (!path.trim()) {
       update(id, { status: "missing" });
@@ -48,6 +55,13 @@ export function Settings({ onSaved }: { onSaved?: () => void }) {
       ...rs,
       { id: uid(), provider, label: "", path: "", enabled: true },
     ]);
+  };
+
+  const detect = async (id: string, provider: Source) => {
+    update(id, { detecting: true, detected: [] });
+    const res = await api.detectSource(provider);
+    update(id, { detecting: false, detected: res.candidates });
+    if (res.candidates[0]) await applyDetectedPath(id, res.candidates[0]);
   };
 
   const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id));
@@ -83,7 +97,7 @@ export function Settings({ onSaved }: { onSaved?: () => void }) {
         <div key={r.id} className={`source-row ${r.enabled ? "" : "disabled"}`}>
           <select
             value={r.provider}
-            onChange={(e) => update(r.id, { provider: e.target.value as Source })}
+            onChange={(e) => update(r.id, { provider: e.target.value as Source, detected: [] })}
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
@@ -110,7 +124,26 @@ export function Settings({ onSaved }: { onSaved?: () => void }) {
             {r.status === "ok" && <span className="path-status ok">✓ path found</span>}
             {r.status === "missing" && <span className="path-status missing">✕ not found</span>}
             {r.status === "checking" && <span className="path-status">checking…</span>}
+            {r.detected && r.detected.length > 0 && (
+              <div className="detect-list">
+                {r.detected.map((candidate) => (
+                  <button
+                    key={candidate.path}
+                    className="detect-chip"
+                    onClick={() => applyDetectedPath(r.id, candidate)}
+                    title={candidate.path}
+                  >
+                    {candidate.confidence} · {candidate.matchCount} match{candidate.matchCount === 1 ? "" : "es"}
+                  </button>
+                ))}
+                <div className="detect-reason">{r.detected[0].reason}</div>
+              </div>
+            )}
           </div>
+
+          <button className="ghost-btn" onClick={() => detect(r.id, r.provider)} disabled={r.detecting}>
+            {r.detecting ? "Detecting…" : "Auto-detect"}
+          </button>
 
           <button
             className={`toggle-btn ${r.enabled ? "on" : ""}`}

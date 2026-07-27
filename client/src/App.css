@@ -964,7 +964,7 @@
 }
 .source-row {
   display: grid;
-  grid-template-columns: 150px 1fr 2.2fr auto auto;
+  grid-template-columns: 150px 1fr 2.2fr auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -1005,6 +1005,26 @@
 }
 .path-status.missing {
   color: var(--danger);
+}
+.detect-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.detect-chip {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.detect-reason {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 .toggle-btn {
   border: 1px solid var(--border);
