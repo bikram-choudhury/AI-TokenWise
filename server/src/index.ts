@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "node:path";
 import { PORT } from "./config.js";
 import {
   refresh,
@@ -180,3 +181,14 @@ app.listen(PORT, () => {
       (snap.errors.length ? ` with errors: ${snap.errors.join("; ")}` : "")
   );
 });
+
+// Electron production: serve the built React SPA so the BrowserWindow can load it.
+// ELECTRON_STATIC_DIR is set by electron/main.ts before requiring this bundle.
+const staticDir = process.env.ELECTRON_STATIC_DIR;
+if (staticDir) {
+  app.use(express.static(staticDir));
+  // For any non-API path, return index.html so React Router works correctly.
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(path.join(staticDir, "index.html"));
+  });
+}

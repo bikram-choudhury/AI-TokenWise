@@ -2,15 +2,72 @@
   "name": "tokenwise",
   "version": "0.1.0",
   "private": true,
+  "main": "dist-electron/main.js",
   "description": "Local-first SPA unifying chat-session and token-usage insights across copilot-cli and VSCode Copilot",
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "install:all": "npm install && npm --prefix server install && npm --prefix client install",
-    "build": "npm --prefix client run build"
+    "build": "npm --prefix client run build",
+    "build:client": "npm --prefix client run build",
+    "build:server-bundle": "esbuild server/src/index.ts --bundle --platform=node --format=cjs --outfile=dist-electron/server.js --external:electron",
+    "build:electron-main": "esbuild electron/main.ts --bundle --platform=node --format=cjs --outfile=dist-electron/main.js --external:electron",
+    "build:all": "npm run build:client && npm run build:server-bundle && npm run build:electron-main",
+    "electron:start-dev": "wait-on http://localhost:5173 && electron .",
+    "electron:dev": "cross-env NODE_ENV=development concurrently -k -n server,client,electron -c blue,magenta,cyan \"npm:dev:server\" \"npm:dev:client\" \"npm:electron:start-dev\"",
+    "electron:pack": "npm run build:all && electron-builder"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^36.9.5",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.tokenwise.app",
+    "productName": "TokenWise",
+    "files": [
+      "dist-electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "client/dist",
+        "to": "client/dist"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
