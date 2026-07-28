@@ -17,7 +17,9 @@
     "electron:start-dev": "wait-on http://localhost:5173 && electron .",
     "electron:dev": "cross-env NODE_ENV=development concurrently -k -n server,client,electron -c blue,magenta,cyan \"npm:dev:server\" \"npm:dev:client\" \"npm:electron:start-dev\"",
     "electron:pack": "npm run build:all && electron-builder",
-    "electron:pack:win": "electron-builder --win"
+    "electron:pack:win": "npm run build:all && electron-builder --win",
+    "electron:pack:mac": "npm run build:all && electron-builder --mac",
+    "electron:pack:linux": "npm run build:all && electron-builder --linux"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
