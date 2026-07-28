@@ -1,6 +1,6 @@
 {
   "name": "tokenwise",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "main": "dist-electron/main.js",
   "description": "Local-first SPA unifying chat-session and token-usage insights across copilot-cli and VSCode Copilot",

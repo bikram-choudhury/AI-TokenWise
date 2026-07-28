@@ -23140,13 +23140,26 @@ function loadCliSessions(dbPath = CLI_DB_PATH) {
 // server/src/adapters/vscodeAdapter.ts
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
-function isRequestList(v) {
-  return Array.isArray(v) && v.length > 0 && typeof v[0] === "object" && v[0] !== null && "requestId" in v[0] && "message" in v[0];
+function applyPatch(root, keyPath, value, append) {
+  if (keyPath.length === 0) return;
+  let node = root;
+  for (let i = 0; i < keyPath.length - 1; i++) {
+    const key = keyPath[i];
+    if (node[key] === void 0 || node[key] === null) {
+      node[key] = typeof keyPath[i + 1] === "number" ? [] : {};
+    }
+    node = node[key];
+  }
+  const last = keyPath[keyPath.length - 1];
+  if (append) {
+    const existing = Array.isArray(node[last]) ? node[last] : [];
+    node[last] = existing.concat(Array.isArray(value) ? value : [value]);
+  } else {
+    node[last] = value;
+  }
 }
 function foldSession(file) {
-  let header = null;
-  let requests = [];
-  let current = null;
+  let state = null;
   let title;
   let content;
   try {
@@ -23164,24 +23177,24 @@ function foldSession(file) {
     }
     const kind = d.kind;
     const v = d.v;
+    const k = Array.isArray(d.k) ? d.k : void 0;
     if (kind === 0) {
-      header = v;
-      requests = Array.isArray(v?.requests) ? [...v.requests] : [];
-      current = requests.length ? requests[requests.length - 1] : null;
-    } else if (kind === 2 && isRequestList(v)) {
-      for (const r of v) requests.push(r);
-      current = requests[requests.length - 1];
-    } else if (kind === 2 && Array.isArray(v) && current) {
-      current.response = (current.response ?? []).concat(v);
-    } else if (kind === 1 && v && typeof v === "object" && !Array.isArray(v) && "usage" in v && current) {
-      current.usage = v.usage;
-      if (typeof v.details === "string") current.details = v.details;
-    } else if (kind === 1 && typeof v === "string" && title === void 0) {
+      state = v && typeof v === "object" ? v : {};
+      continue;
+    }
+    if (state === null) state = {};
+    if (kind === 1 && k && k.length > 0) {
+      applyPatch(state, k, v, false);
+    } else if (kind === 2 && k && k.length > 0) {
+      applyPatch(state, k, v, true);
+    } else if (kind === 1 && !k && typeof v === "string" && title === void 0) {
       title = v;
     }
   }
-  if (!header) return null;
-  return { title, header, requests };
+  if (!state) return null;
+  if (typeof state.customTitle === "string" && title === void 0) title = state.customTitle;
+  const requests = Array.isArray(state.requests) ? state.requests : [];
+  return { title, header: state, requests };
 }
 function extractResponseText(parts) {
   if (!Array.isArray(parts)) return "";
@@ -23200,18 +23213,13 @@ function extractResponseText(parts) {
   return out.join("").trim();
 }
 function requestUsage(r) {
-  const input = r.usage?.promptTokens ?? 0;
-  const output = r.usage?.completionTokens ?? 0;
+  const meta = r.result?.metadata;
+  const input = typeof meta?.promptTokens === "number" ? meta.promptTokens : 0;
+  const output = typeof r.completionTokens === "number" ? r.completionTokens : typeof meta?.outputTokens === "number" ? meta.outputTokens : 0;
   return { input, output, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: input + output, aiu: 0 };
 }
-function promptBreakdown(r) {
-  const details = r.usage?.promptTokenDetails;
-  if (!Array.isArray(details) || details.length === 0) return void 0;
-  return details.map((d) => ({
-    category: d.category ?? "Other",
-    label: d.label ?? d.category ?? "Other",
-    pct: d.percentageOfPrompt ?? 0
-  }));
+function promptBreakdown(_r) {
+  return void 0;
 }
 function stripModel(modelId) {
   if (!modelId) return "unknown";
