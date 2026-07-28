@@ -16,7 +16,8 @@
     "build:all": "npm run build:client && npm run build:server-bundle && npm run build:electron-main",
     "electron:start-dev": "wait-on http://localhost:5173 && electron .",
     "electron:dev": "cross-env NODE_ENV=development concurrently -k -n server,client,electron -c blue,magenta,cyan \"npm:dev:server\" \"npm:dev:client\" \"npm:electron:start-dev\"",
-    "electron:pack": "npm run build:all && electron-builder"
+    "electron:pack": "npm run build:all && electron-builder",
+    "assets:icons": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/generate-icons.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
@@ -30,7 +31,8 @@
     "appId": "com.tokenwise.app",
     "productName": "TokenWise",
     "files": [
-      "dist-electron/**"
+      "dist-electron/**",
+      "assets/icons/**"
     ],
     "extraResources": [
       {
@@ -39,6 +41,7 @@
       }
     ],
     "win": {
+      "icon": "assets/icons/win/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -48,7 +51,12 @@
         }
       ]
     },
+    "nsis": {
+      "installerIcon": "assets/icons/win/icon.ico",
+      "uninstallerIcon": "assets/icons/win/icon.ico"
+    },
     "mac": {
+      "icon": "assets/icons/mac/icon.png",
       "target": [
         {
           "target": "dmg",
@@ -60,6 +68,7 @@
       ]
     },
     "linux": {
+      "icon": "assets/icons/linux",
       "target": [
         {
           "target": "AppImage",

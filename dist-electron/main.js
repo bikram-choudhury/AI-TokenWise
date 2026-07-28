@@ -38,6 +38,7 @@ function log(msg) {
   console.log(msg);
 }
 function createWindow() {
+  const iconPath = isDev ? import_path.default.join(import_electron.app.getAppPath(), "assets", "icons", "icon.png") : import_path.default.join(process.resourcesPath, "assets", "icons", "icon.png");
   mainWindow = new import_electron.BrowserWindow({
     width: 1280,
     height: 800,
@@ -48,6 +49,7 @@ function createWindow() {
       contextIsolation: true
     },
     title: "TokenWise",
+    icon: import_fs.default.existsSync(iconPath) ? iconPath : void 0,
     show: false
   });
   const url = isDev ? "http://localhost:5173" : `http://localhost:${PORT}`;

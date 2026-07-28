@@ -17,6 +17,10 @@ function log(msg: string): void {
 }
 
 function createWindow(): void {
+  const iconPath = isDev
+    ? path.join(app.getAppPath(), 'assets', 'icons', 'icon.png')
+    : path.join(process.resourcesPath, 'assets', 'icons', 'icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -27,6 +31,7 @@ function createWindow(): void {
       contextIsolation: true,
     },
     title: 'TokenWise',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     show: false,
   });
 
