@@ -17,7 +17,7 @@
     "electron:start-dev": "wait-on http://localhost:5173 && electron .",
     "electron:dev": "cross-env NODE_ENV=development concurrently -k -n server,client,electron -c blue,magenta,cyan \"npm:dev:server\" \"npm:dev:client\" \"npm:electron:start-dev\"",
     "electron:pack": "npm run build:all && electron-builder",
-    "assets:icons": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/generate-icons.ps1"
+    "electron:pack:win": "electron-builder --win"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

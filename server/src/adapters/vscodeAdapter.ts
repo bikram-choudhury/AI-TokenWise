@@ -15,37 +15,59 @@ interface RawRequest {
   modelId?: string;
   message?: { text?: string };
   response?: any[];
-  usage?: {
-    promptTokens?: number;
-    completionTokens?: number;
-    promptTokenDetails?: Array<{ category?: string; label?: string; percentageOfPrompt?: number }>;
+  completionTokens?: number;
+  result?: {
+    metadata?: {
+      promptTokens?: number;
+      outputTokens?: number;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
   };
   details?: string;
 }
 
-function isRequestList(v: unknown): v is RawRequest[] {
-  return (
-    Array.isArray(v) &&
-    v.length > 0 &&
-    typeof v[0] === "object" &&
-    v[0] !== null &&
-    "requestId" in (v[0] as object) &&
-    "message" in (v[0] as object)
-  );
+/**
+ * Apply a single JSON-patch mutation to `root`, creating intermediate
+ * containers as needed. When `append` is true, `value` (an array) is
+ * concatenated onto the array at the target path.
+ */
+function applyPatch(
+  root: any,
+  keyPath: Array<string | number>,
+  value: unknown,
+  append: boolean
+): void {
+  if (keyPath.length === 0) return;
+  let node = root;
+  for (let i = 0; i < keyPath.length - 1; i++) {
+    const key = keyPath[i];
+    if (node[key] === undefined || node[key] === null) {
+      node[key] = typeof keyPath[i + 1] === "number" ? [] : {};
+    }
+    node = node[key];
+  }
+  const last = keyPath[keyPath.length - 1];
+  if (append) {
+    const existing = Array.isArray(node[last]) ? node[last] : [];
+    node[last] = existing.concat(Array.isArray(value) ? value : [value]);
+  } else {
+    node[last] = value;
+  }
 }
 
 /**
- * Reconstruct the final request list from the append-only mutation log.
- * kind:0 = snapshot (header + requests[])
- * kind:2 list with requestId+message = new request(s) appended
- * kind:2 list otherwise = response parts appended to the current request
- * kind:1 dict with usage = usage/metadata patch for the current request
- * kind:1 string = session title
+ * Reconstruct the final session state from the append-only mutation log.
+ * The log is a JSON-patch stream:
+ *   kind:0 = full snapshot of the session state (`v`)
+ *   kind:1 = set the value at path `k` to `v` (e.g. requests[i].completionTokens)
+ *   kind:2 = append the array `v` onto the array at path `k`
+ *            (e.g. append a new request to requests, or response parts to
+ *             requests[i].response)
+ * Older logs used kind:1 with a bare string `v` (no `k`) for the title.
  */
 function foldSession(file: string): { title?: string; header: any; requests: RawRequest[] } | null {
-  let header: any = null;
-  let requests: RawRequest[] = [];
-  let current: RawRequest | null = null;
+  let state: any = null;
   let title: string | undefined;
 
   let content: string;
@@ -65,26 +87,27 @@ function foldSession(file: string): { title?: string; header: any; requests: Raw
     }
     const kind = d.kind;
     const v = d.v;
+    const k: Array<string | number> | undefined = Array.isArray(d.k) ? d.k : undefined;
 
     if (kind === 0) {
-      header = v;
-      requests = Array.isArray(v?.requests) ? [...v.requests] : [];
-      current = requests.length ? requests[requests.length - 1] : null;
-    } else if (kind === 2 && isRequestList(v)) {
-      for (const r of v) requests.push(r);
-      current = requests[requests.length - 1];
-    } else if (kind === 2 && Array.isArray(v) && current) {
-      current.response = (current.response ?? []).concat(v);
-    } else if (kind === 1 && v && typeof v === "object" && !Array.isArray(v) && "usage" in v && current) {
-      current.usage = v.usage;
-      if (typeof v.details === "string") current.details = v.details;
-    } else if (kind === 1 && typeof v === "string" && title === undefined) {
+      state = v && typeof v === "object" ? v : {};
+      continue;
+    }
+    if (state === null) state = {};
+
+    if (kind === 1 && k && k.length > 0) {
+      applyPatch(state, k, v, false);
+    } else if (kind === 2 && k && k.length > 0) {
+      applyPatch(state, k, v, true);
+    } else if (kind === 1 && !k && typeof v === "string" && title === undefined) {
       title = v;
     }
   }
 
-  if (!header) return null;
-  return { title, header, requests };
+  if (!state) return null;
+  if (typeof state.customTitle === "string" && title === undefined) title = state.customTitle;
+  const requests: RawRequest[] = Array.isArray(state.requests) ? state.requests : [];
+  return { title, header: state, requests };
 }
 
 function extractResponseText(parts: any[] | undefined): string {
@@ -105,19 +128,19 @@ function extractResponseText(parts: any[] | undefined): string {
 }
 
 function requestUsage(r: RawRequest): TokenUsage {
-  const input = r.usage?.promptTokens ?? 0;
-  const output = r.usage?.completionTokens ?? 0;
+  const meta = r.result?.metadata;
+  const input = typeof meta?.promptTokens === "number" ? meta.promptTokens : 0;
+  const output =
+    typeof r.completionTokens === "number"
+      ? r.completionTokens
+      : typeof meta?.outputTokens === "number"
+        ? meta.outputTokens
+        : 0;
   return { input, output, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: input + output, aiu: 0 };
 }
 
-function promptBreakdown(r: RawRequest): PromptCategory[] | undefined {
-  const details = r.usage?.promptTokenDetails;
-  if (!Array.isArray(details) || details.length === 0) return undefined;
-  return details.map((d) => ({
-    category: d.category ?? "Other",
-    label: d.label ?? d.category ?? "Other",
-    pct: d.percentageOfPrompt ?? 0,
-  }));
+function promptBreakdown(_r: RawRequest): PromptCategory[] | undefined {
+  return undefined;
 }
 
 function stripModel(modelId?: string): string {
